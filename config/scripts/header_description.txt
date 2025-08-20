@@ -1,0 +1,9 @@
+A command-line utility designed to remove duplicate files and ensure data redundancy. Originally developed to address issues at a Farm and 
+Campsite near Loch Ness, where incorrect drivers were installed on newly upgraded laptops, this program utilizes pattern detection and 
+manual oversight to eliminate duplicates and upload remaining files to an on-premise storage solution (TrueNAS Server).
+
+**KEY FEATURES:**
+
+* Removes duplicate files based on manual overlooking and pattern detection
+* Ensures data redundancy by uploading remaining files to TrueNAS Server
+* Utilizes command-line interface for easy usage
