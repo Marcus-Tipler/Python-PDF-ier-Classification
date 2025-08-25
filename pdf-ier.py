@@ -16,24 +16,31 @@ This Program is consisted of three parts as follows:
 """ 0.1. Imports & Requirements """
 import configparser
 import markdown
+import os
 from bs4 import BeautifulSoup
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
 from reportlab.lib import colors
-import os
+from markitdown import MarkItDown
 
 
 
 
 """ 0.2. Main Program """
 def main():
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
     cfg_path = "settings.cfg"
     settings = read_settings(cfg_path)
     print_settings(settings)
 
+    # print(f"{settings['classification']}") # Access individual settings.
+    # print(f"{settings['content_directory']}")
+
     # PDF Printing pages
-    generate_pdf_from_md("./config/content/content.md", "output.pdf")
+    markify(settings, base_dir)
 
 
 
@@ -68,6 +75,7 @@ def read_settings(cfg_path):
         'footer_ind_left': s.get('footer_ind_left'),
         'footer_ind_middle': s.get('footer_ind_middle'),
         'footer_ind_right': s.get('footer_ind_right'),
+        'content_directory': s.get('content_directory'),
     }
 
 def print_settings(settings):
@@ -78,60 +86,18 @@ def print_settings(settings):
 
 
 
-def md_to_html(md_path):
-    with open(md_path, 'r', encoding='utf-8') as f:
-        md_content = f.read()
-    html = markdown.markdown(md_content, extensions=['tables', 'fenced_code', 'codehilite', 'attr_list'])
-    return html
-
-
-def parse_html_to_pdf_elements(html, base_path):
-    soup = BeautifulSoup(html, 'html.parser')
-    styles = getSampleStyleSheet()
-    elements = []
-
-    for tag in soup.children:
-        if tag.name == 'h1':
-            elements.append(Paragraph(tag.text, styles['Title']))
-        elif tag.name == 'h2':
-            elements.append(Paragraph(tag.text, styles['Heading2']))
-        elif tag.name == 'h3':
-            elements.append(Paragraph(tag.text, styles['Heading3']))
-        elif tag.name == 'p':
-            elements.append(Paragraph(tag.text, styles['BodyText']))
-        elif tag.name == 'pre':
-            code_style = ParagraphStyle('Code', fontName='Courier', fontSize=10, backColor=colors.lightgrey)
-            elements.append(Paragraph(tag.text, code_style))
-        elif tag.name == 'img':
-            img_path = os.path.join(base_path, tag['src'])
-            elements.append(Image(img_path, width=400, height=200))
-        elif tag.name == 'table':
-            data = []
-            for row in tag.find_all('tr'):
-                data.append([cell.text for cell in row.find_all(['td', 'th'])])
-            table = Table(data)
-            table.setStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                            ('GRID', (0, 0), (-1, -1), 1, colors.black)])
-            elements.append(table)
-        elif tag.name is None and tag.string.strip():
-            elements.append(Paragraph(tag.string, styles['BodyText']))
-        # Add more tag handling as needed
-
-        elements.append(Spacer(1, 12))
-    return elements
-
-
-def generate_pdf_from_md(md_path, pdf_path):
-    base_path = os.path.dirname(md_path)
-    html = md_to_html(md_path)
-    elements = parse_html_to_pdf_elements(html, base_path)
-    doc = SimpleDocTemplate(pdf_path, pagesize=A4)
-    doc.build(elements)
+""" Convert ALL files in CONTENT DIRECTORY to MARKDOWN """
+def markify(settings, base_dir):
+    md = MarkItDown(enable_plugins=False)
+    directory = os.path.join(base_dir, './config/content')
+    results = []
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            result = md.convert(file_path)  # Pass the file path, not the content
+            results.append(result)
+    for result in results:
+        print(result.text_content)
 
 
 
