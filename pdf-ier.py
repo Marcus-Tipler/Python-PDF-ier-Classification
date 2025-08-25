@@ -15,9 +15,13 @@ This Program is consisted of three parts as follows:
 
 """ 0.1. Imports & Requirements """
 import configparser
+import markdown
+from bs4 import BeautifulSoup
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.colors import HexColor
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
+from reportlab.lib import colors
+import os
 
 
 
@@ -27,7 +31,10 @@ def main():
     cfg_path = "settings.cfg"
     settings = read_settings(cfg_path)
     print_settings(settings)
-    generate_pdf(settings)
+
+    # PDF Printing pages
+    generate_pdf_from_md("./config/content/content.md", "output.pdf")
+
 
 
 
@@ -71,70 +78,60 @@ def print_settings(settings):
 
 
 
-""" 3. GENERATE PDF FROM DATA """
-def generate_pdf(settings, filename="output.pdf"):
-    c = canvas.Canvas(filename, pagesize=A4)
-    width, height = A4
+def md_to_html(md_path):
+    with open(md_path, 'r', encoding='utf-8') as f:
+        md_content = f.read()
+    html = markdown.markdown(md_content, extensions=['tables', 'fenced_code', 'codehilite', 'attr_list'])
+    return html
 
-    # Classification (centered, rotated)
-    if settings['classification']:
-        c.saveState()
-        c.setFillColor(HexColor(settings['classification_color']))
-        c.translate(width/2, height/2)
-        c.rotate(int(settings['classification_angle']))
-        c.setFont("Helvetica-Bold", 24)
-        c.drawCentredString(0, 0, f"Classification: {settings['classification']}")
-        c.restoreState()
-        
-    # Header
-    if settings['is_header']:
-        y = height - 60
-        if settings['header_center_logo'] and settings['logo_file']:
-            c.drawString(50, y, f"[Logo: {settings['logo_file']}]")
-            y -= 30
-        c.setFont("Helvetica-Bold", 20)
-        c.setFillColor(HexColor(settings['title_color']))
-        c.drawString(50, y, f"Title: {settings['header_title']}")
-        y -= 25
-        c.setFont("Helvetica", 16)
-        c.setFillColor(HexColor(settings['subtitle_color']))
-        c.drawString(50, y, f"Subtitle: {settings['header_subtitle']}")
-        y -= 25
-        c.setFont("Helvetica", 12)
-        c.setFillColor(HexColor(settings['text_color']))
-        c.drawString(50, y, f"Description: {settings['header_description']}")
-        y -= 25
-        if settings['is_header_classified']:
-            c.setFont("Helvetica-Oblique", 10)
-            c.setFillColor(HexColor(settings['classification_color']))
-            c.drawString(50, y, f"[Header Classification: {settings['classification']}]")
 
-    c.showPage()  # End main page
+def parse_html_to_pdf_elements(html, base_path):
+    soup = BeautifulSoup(html, 'html.parser')
+    styles = getSampleStyleSheet()
+    elements = []
 
-    # Footer (bottom of page)
-    if settings['is_footer']:
-        y = 40
-        c.setFont("Helvetica-Bold", 14)
-        c.setFillColor(HexColor(settings['title_color']))
-        c.drawString(50, y, f"Footer Title: {settings['footer_title']}")
-        if settings['is_footer_classified']:
-            c.setFont("Helvetica-Oblique", 10)
-            c.setFillColor(HexColor(settings['classification_color']))
-            c.drawString(250, y, f"[Footer Classification: {settings['classification']}]")
-        c.showPage()  # End footer page
+    for tag in soup.children:
+        if tag.name == 'h1':
+            elements.append(Paragraph(tag.text, styles['Title']))
+        elif tag.name == 'h2':
+            elements.append(Paragraph(tag.text, styles['Heading2']))
+        elif tag.name == 'h3':
+            elements.append(Paragraph(tag.text, styles['Heading3']))
+        elif tag.name == 'p':
+            elements.append(Paragraph(tag.text, styles['BodyText']))
+        elif tag.name == 'pre':
+            code_style = ParagraphStyle('Code', fontName='Courier', fontSize=10, backColor=colors.lightgrey)
+            elements.append(Paragraph(tag.text, code_style))
+        elif tag.name == 'img':
+            img_path = os.path.join(base_path, tag['src'])
+            elements.append(Image(img_path, width=400, height=200))
+        elif tag.name == 'table':
+            data = []
+            for row in tag.find_all('tr'):
+                data.append([cell.text for cell in row.find_all(['td', 'th'])])
+            table = Table(data)
+            table.setStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                            ('GRID', (0, 0), (-1, -1), 1, colors.black)])
+            elements.append(table)
+        elif tag.name is None and tag.string.strip():
+            elements.append(Paragraph(tag.string, styles['BodyText']))
+        # Add more tag handling as needed
 
-    # Individual Page Footer (left, middle, right)
-    if settings['is_ind_footer']:
-        y = 20
-        c.setFont("Helvetica", 10)
-        c.setFillColor(HexColor(settings['text_color']))
-        c.drawString(50, y, f"Left: {settings['footer_ind_left']}")
-        c.drawCentredString(width/2, y, f"Middle: {settings['footer_ind_middle']}")
-        c.drawRightString(width-50, y, f"Right: {settings['footer_ind_right']}")
+        elements.append(Spacer(1, 12))
+    return elements
 
-    c.showPage()
-    c.save()
-    print(f"PDF generated: {filename}")
+
+def generate_pdf_from_md(md_path, pdf_path):
+    base_path = os.path.dirname(md_path)
+    html = md_to_html(md_path)
+    elements = parse_html_to_pdf_elements(html, base_path)
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4)
+    doc.build(elements)
 
 
 
